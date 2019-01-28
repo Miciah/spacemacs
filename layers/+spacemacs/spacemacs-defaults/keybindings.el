@@ -86,8 +86,8 @@
                                        ("xt"  "transpose")
                                        ("xw"  "words")
                                        ("z"   "zoom")))
-(mapc (lambda (x) (apply #'spacemacs/declare-prefix x))
-      spacemacs/key-binding-prefixes)
+(dolist (x spacemacs/key-binding-prefixes)
+  (apply #'spacemacs/declare-prefix x))
 
 ;; instantly display current keystrokes in mini buffer
 (setq echo-keystrokes 0.02)

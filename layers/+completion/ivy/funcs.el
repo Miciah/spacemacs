@@ -113,8 +113,7 @@
             (previous-line)
             (line-number-at-pos))
           spacemacs--gne-line-func
-          (lambda (c)
-            (counsel-git-grep-action c))
+          #'counsel-git-grep-action
           next-error-function 'spacemacs/gne-next)))
 
 (defvar spacemacs--counsel-map

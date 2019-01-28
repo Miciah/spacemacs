@@ -105,8 +105,7 @@ system and supports it, else returns a default set of include paths."
   "Returns all the strings in FLAGS starting with FILTER-PREFIX. The returned
 strings are substringed from SUBSTR-INDEX inclusive to the end of the string."
   (mapcar (lambda (f) (substring f substr-index))
-          (remove-if-not (lambda (f) (string-prefix-p filter-prefix f))
-                         flags)))
+          (cl-remove filter-prefix flags :test-not #'string-prefix-p)))
 
 (defun spacemacs/c-c++-load-clang-args ()
   "Sets the arguments for company-clang, the system paths for company-c-headers

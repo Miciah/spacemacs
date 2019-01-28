@@ -191,12 +191,11 @@ subdirectory of ROOT is used."
   "Return the list of owned packages by LAYER.
 If PROPS is non-nil then return packages as lists with their properties.
 LAYER has to be installed for this method to work properly."
-  (delq nil (mapcar
-             (lambda (x)
-               (let* ((pkg-name (if (listp x) (car x) x))
-                      (pkg (configuration-layer/get-package pkg-name)))
-                 (when (eq (oref layer :name) (car (oref pkg :owners))) x)))
-             (cfgl-layer-get-packages layer props))))
+  (cl-loop for x in (cfgl-layer-get-packages layer props)
+           for pkg-name = (if (listp x) (car x) x)
+           for pkg = (configuration-layer/get-package pkg-name)
+           when (eq (oref layer :name) (car (oref pkg :owners)))
+           collect x))
 
 (defmethod cfgl-layer-owned-packages ((layer nil) &optional props)
   "Accept nil as argument and return nil."
@@ -210,30 +209,24 @@ LAYER has to be installed for this method to work properly."
     (when (and (numberp rank)
                (not (eq 'unspecified shadow-candidates))
                (listp shadow-candidates))
-      (mapcar
-       (lambda (other)
-         (let ((orank (cl-position other configuration-layer--used-layers)))
-           ;; OTHER shadows LAYER if and only if OTHER's rank is bigger than
-           ;; LAYER's rank.
-           (when (and (numberp orank) (< rank orank))
-             (add-to-list 'shadowing-layers other))))
-       ;; since the 'can-shadow' relation is commutative it is safe to use this
-       ;; list, i.e. if LAYER can shadow layers X and Y then X and Y can shadow
-       ;; LAYER.
-       shadow-candidates))
-    shadowing-layers))
+      ;; Because the 'can-shadow' relation is commutative (i.e. if LAYER can
+      ;; shadow layers X and Y, then X and Y can shadow LAYER), it is sufficient
+      ;; to check shadow-candidates.
+      (dolist (other shadow-candidates shadowing-layers)
+        (let ((orank (cl-position other configuration-layer--used-layers)))
+          ;; OTHER shadows LAYER if and only if OTHER's rank is bigger than
+          ;; LAYER's rank.
+          (when (and (numberp orank) (< rank orank))
+            (add-to-list 'shadowing-layers other)))))))
 
 (defmethod cfgl-layer-get-packages ((layer cfgl-layer) &optional props)
   "Return the list of packages for LAYER.
 If PROPS is non-nil then return packages as lists along with their properties."
-  (let ((all (eq 'all (oref layer :selected-packages))))
-    (delq nil (mapcar
-               (lambda (x)
-                 (let ((pkg-name (if (listp x) (car x) x)))
-                   (when (or all (memq pkg-name
-                                       (oref layer :selected-packages)))
-                     (if props x pkg-name))))
-               (oref layer :packages)))))
+  (cl-loop for pkg in (oref layer :packages)
+           for pkg-name = (if (listp pkg) (car pkg) pkg)
+           with all = (eq 'all (oref layer :selected-packages))
+           when (or all (memq pkg-name (oref layer :selected-packages)))
+           collect (if props pkg pkg-name)))
 
 (defclass cfgl-package ()
   ((name :initarg :name
@@ -304,12 +297,10 @@ is ignored."
   "Check if requirements of a package are all enabled.
 If INHIBIT-MESSAGES is non nil then any message emitted by the toggle evaluation
 is ignored."
-  (not (memq nil (mapcar
-                  (lambda (dep-pkg)
-                    (let ((pkg-obj (configuration-layer/get-package dep-pkg)))
-                      (when pkg-obj
-                        (cfgl-package-enabled-p pkg-obj inhibit-messages))))
-                  (oref pkg :requires)))))
+  (cl-loop for dep-pkg in (oref pkg :requires)
+           for pkg-obj = (configuration-layer/get-package dep-pkg)
+           always (and pkg-obj
+                       (cfgl-package-enabled-p pkg-obj inhibit-messages))))
 
 (defmethod cfgl-package-enabled-p ((pkg cfgl-package) &optional inhibit-messages)
   "Check if a package is enabled.
@@ -478,20 +469,17 @@ of all reachable ones.
 If the url of an archive already contains the protocol then this url is
 left untouched.
 The returned list has a `package-archives' compliant format."
-  (mapcar
-   (lambda (x)
-     (let ((aname (car x))
-           (apath (cdr x)))
-       (cons aname
-             (if (configuration-layer//package-archive-absolute-path-p x)
-                 apath
-               (concat
-                (if (and dotspacemacs-elpa-https
-                         (not spacemacs-insecure))
-                    "https://"
-                  "http://")
-                apath)))))
-   archives))
+  (cl-loop
+   for archive in archives
+   for aname = (car archive)
+   for apath = (cdr archive)
+   for protocol = (unless (configuration-layer//package-archive-absolute-path-p
+                           archive)
+                    (if (and dotspacemacs-elpa-https
+                             (not spacemacs-insecure))
+                        "https://"
+                      "http://"))
+   collect (cons aname (concat protocol apath))))
 
 (defun configuration-layer/retrieve-package-archives (&optional quiet force)
   "Retrieve all archives declared in current `package-archives'.
@@ -681,16 +669,16 @@ To prevent package from being installed or uninstalled set the variable
 directory to use. Create a layer with this name in the selected
 layer directory."
   (interactive)
-  (let* ((current-layer-paths (mapcar (lambda (dir) (expand-file-name dir))
-                                      (cl-pushnew
-                               configuration-layer-private-layer-directory
-                               dotspacemacs-configuration-layer-path)))
+  (let* ((current-layer-paths
+          (mapcar #'expand-file-name
+                  (cl-pushnew configuration-layer-private-layer-directory
+                              dotspacemacs-configuration-layer-path)))
          (other-choice "Another directory...")
          (helm-lp-source
           `((name . "Configuration Layer Paths")
             (candidates . ,(append current-layer-paths
                                    (list other-choice)))
-            (action . (lambda (c) c))))
+            (action . ,#'identity)))
          (layer-path-sel (if (configuration-layer/layer-used-p 'ivy)
                              (ivy-read "Configuration layer path: "
                                        (append current-layer-paths
@@ -739,11 +727,10 @@ layer directory."
      ;; unselect packages
      ((and selected-packages
            (eq 'not (car selected-packages)))
-      (delq nil (mapcar (lambda (x)
-                          (let ((pkg-name (if (listp x) (car x) x)))
-                            (unless (memq pkg-name selected-packages)
-                              pkg-name)))
-                        packages)))
+      (cl-loop for x in packages
+               for pkg-name = (if (listp x) (car x) x)
+               unless (memq pkg-name selected-packages)
+               collect pkg-name))
      ;; no package selections or all package selected
      (t 'all))))
 
@@ -1183,7 +1170,7 @@ Return nil if package object is not found."
 
 (defun configuration-layer//sort-packages (packages)
   "Return a sorted list of PACKAGES objects."
-  (sort packages (lambda (x y) (string< (symbol-name x) (symbol-name y)))))
+  (cl-sort packages #'string< :key #'symbol-name))
 
 (defun configuration-layer/make-all-packages (&optional skip-layer-discovery)
   "Create objects for _all_ packages supported by Spacemacs.
@@ -1246,16 +1233,12 @@ USEDP if non-nil indicates that made packages are used packages."
           ;; distant packages are all not already installed
           (let ((lazy
                  (or (eq 'all dotspacemacs-enable-lazy-installation)
-                     (cl-reduce
-                      (lambda (x y) (and x y))
-                      (mapcar
-                       (lambda (p)
-                         (let ((pkg (configuration-layer/get-package p)))
-                           (or (not (eq layer-name (car (oref pkg :owners))))
-                               (null (package-installed-p
-                                      (oref pkg :name))))))
-                       package-names)
-                      :initial-value t))))
+                     (cl-loop
+                      for p in package-names
+                      for pkg = (configuration-layer/get-package p)
+                      always (or (not (eq layer-name (car (oref pkg :owners))))
+                                 (null (package-installed-p
+                                        (oref pkg :name))))))))
             (oset layer :lazy-install lazy)
             (dolist (pkg-name package-names)
               (let ((pkg (configuration-layer/get-package pkg-name)))
@@ -1278,7 +1261,7 @@ USEDP if non-nil indicates that made packages are used packages."
           (add-to-list
            'interpreter-mode-alist
            `(,regex . (lambda () (configuration-layer//auto-mode
-                               ',layer-name ',mode)))))))))
+                                  ',layer-name ',mode)))))))))
 
 (defun configuration-layer//auto-mode (layer-name mode)
   "Auto mode support of lazily installed layers."
@@ -1288,30 +1271,22 @@ USEDP if non-nil indicates that made packages are used packages."
       (configuration-layer//lazy-install-packages layer-name mode)))
   (when (fboundp mode) (funcall mode)))
 
-(defun configuration-layer/filter-objects (objects ffunc)
-  "Return a filtered OBJECTS list where each element satisfies FFUNC."
-  (reverse (cl-reduce (lambda (acc x) (if (funcall ffunc x) (push x acc) acc))
-                      objects
-                      :initial-value nil)))
-
 (defun configuration-layer//filter-distant-packages
     (packages usedp &optional predicate)
   "Return the distant packages (ie to be intalled).
 If USEDP is non nil then returns only the used packages; if it is nil then
 return both used and unused packages.
 PREDICATE is an additional expression that eval to a boolean."
-  (configuration-layer/filter-objects
-   packages
-   (lambda (x)
-     (let ((pkg (configuration-layer/get-package x)))
-       (if pkg
-           (and (cfgl-package-distant-p pkg)
-                (or (null usedp)
-                    (cfgl-package-used-p pkg))
-                (or (null predicate)
-                    (eval predicate)))
-         (spacemacs-buffer/warning "Cannot find package for %s" x)
-         nil)))))
+  (cl-loop for p in packages
+           for pkg = (configuration-layer/get-package p)
+           if pkg
+             if (and (cfgl-package-distant-p pkg)
+                     (or (null usedp) (cfgl-package-used-p pkg))
+                     (or (null predicate) (eval predicate)))
+               collect p
+             end
+           else
+             do (spacemacs-buffer/warning "Cannot find package for %s" p)))
 
 (defun configuration-layer//get-private-layer-dir (name)
   "Return an absolute path to the private configuration layer string NAME."
@@ -1402,15 +1377,13 @@ discovery."
                        dotspacemacs-configuration-layer-path))
         (discovered '()))
     ;; filter out directories that don't exist
-    (setq search-paths (configuration-layer/filter-objects
-                        search-paths
-                        (lambda (x)
-                          (let ((exists (file-exists-p x)))
-                            (unless exists
-                              (configuration-layer//warning
-                               "Layer directory \"%s\" not found. Ignoring it."
-                               x))
-                            exists))))
+    (setq search-paths (cl-loop for x in search-paths
+                                for exists = (file-exists-p x)
+                                if exists collect x
+                                else do
+                                (configuration-layer//warning
+                                 "Layer directory \"%s\" not found. Ignoring it."
+                                 x)))
     ;; depth-first search of subdirectories
     (while search-paths
       (let ((current-path (car search-paths)))
@@ -1563,9 +1536,7 @@ RNAME is the name symbol of another existing layer."
 (defun configuration-layer//set-layers-variables (layer-names)
   "Set the configuration variables for the passed LAYER-NAMES."
   (mapc 'configuration-layer//set-layer-variables
-        (mapcar (lambda (lname)
-                  (configuration-layer/get-layer lname))
-                layer-names)))
+        (mapcar #'configuration-layer/get-layer layer-names)))
 
 (defun configuration-layer//set-layer-variables (layer)
   "Set the configuration variables for the passed LAYER."
@@ -1628,9 +1599,9 @@ RNAME is the name symbol of another existing layer."
     (configuration-layer/make-packages-from-layers layers t)
     (configuration-layer/make-packages-from-dotfile t)
     (setq configuration-layer--used-packages
-          (configuration-layer/filter-objects
-           configuration-layer--used-packages
-           'configuration-layer/package-used-p))
+          (cl-remove-if-not
+           'configuration-layer/package-used-p
+           configuration-layer--used-packages))
     (setq configuration-layer--used-packages
           (configuration-layer//sort-packages
            configuration-layer--used-packages))))
@@ -1652,28 +1623,20 @@ RNAME is the name symbol of another existing layer."
 (defun configuration-layer/configured-packages-stats (packages)
   "Return a statistics alist regarding the number of configured PACKAGES."
   `((total ,(length packages))
-    (elpa ,(length (configuration-layer/filter-objects
-                    packages
-                    (lambda (x)
-                      (let ((pkg (configuration-layer/get-package x)))
-                        (eq 'elpa (oref pkg :location)))))))
-    (recipe ,(length (configuration-layer/filter-objects
-                      packages
-                      (lambda (x)
-                        (let* ((pkg (configuration-layer/get-package x))
-                               (location (oref pkg :location)))
-                          (and (listp location)
-                               (eq 'recipe (car location))))))))
-    (local ,(length (configuration-layer/filter-objects
-                     packages
-                     (lambda (x)
-                       (let ((pkg (configuration-layer/get-package x)))
-                         (memq (oref pkg :location) '(local site)))))))
-    (built-in ,(length (configuration-layer/filter-objects
-                        packages
-                        (lambda (x)
-                          (let ((pkg (configuration-layer/get-package x)))
-                            (eq 'built-in (oref pkg :location)))))))))
+    (elpa ,(cl-loop for p in packages
+                    for pkg = (configuration-layer/get-package p)
+                    count (eq 'elpa (oref pkg :location))))
+    (recipe ,(cl-loop for p in packages
+                      for pkg = (configuration-layer/get-package p)
+                      for location = (oref pkg :location)
+                      count (and (listp location)
+                                 (eq 'recipe (car location)))))
+    (local ,(cl-loop for p in packages
+                     for pkg = (configuration-layer/get-package p)
+                     count (memq (oref pkg :location) '(local site))))
+    (built-in ,(cl-loop for p in packages
+                        for pkg = (configuration-layer/get-package p)
+                        count (eq 'built-in (oref pkg :location))))))
 
 (defun configuration-layer//install-package (pkg)
   "Unconditionally install the package PKG."
@@ -1723,15 +1686,12 @@ RNAME is the name symbol of another existing layer."
         (configuration-layer/load)))
     (let* ((layer (configuration-layer/get-layer layer-name))
            (inst-pkgs
-            (delq nil
-                  (mapcar
-                   (lambda (x)
-                     (let* ((pkg-name (if (listp x) (car x) x))
-                            (pkg (configuration-layer/get-package pkg-name)))
-                       (cfgl-package-set-property pkg :lazy-install nil)
-                       (when (cfgl-package-distant-p pkg)
-                         pkg-name)))
-                   (oref layer :packages)))))
+            (cl-loop for p in (oref layer :packages)
+                    for pkg-name = (if (listp p) (car p) p)
+                    for pkg = (configuration-layer/get-package pkg-name)
+                    do (cfgl-package-set-property pkg :lazy-install nil)
+                    when (cfgl-package-distant-p pkg)
+                    collect pkg-name)))
       (let ((last-buffer (current-buffer))
             (sorted-pkg (configuration-layer//sort-packages inst-pkgs)))
         (spacemacs-buffer/goto-buffer)
@@ -1889,22 +1849,22 @@ RNAME is the name symbol of another existing layer."
   (spacemacs/init-progress-bar (length packages))
   (spacemacs-buffer/message "+ Configuring bootstrap packages...")
   (configuration-layer//configure-packages-2
-   (configuration-layer/filter-objects
-    packages (lambda (x)
-               (let ((pkg (configuration-layer/get-package x)))
-                 (eq 'bootstrap (oref pkg :step))))))
+   (cl-loop for p in packages
+            for pkg = (configuration-layer/get-package p)
+            when (eq 'bootstrap (oref pkg :step))
+            collect p))
   (spacemacs-buffer/message "+ Configuring pre packages...")
   (configuration-layer//configure-packages-2
-   (configuration-layer/filter-objects
-    packages (lambda (x)
-               (let ((pkg (configuration-layer/get-package x)))
-                 (eq 'pre (oref pkg :step))))))
+   (cl-loop for p in packages
+            for pkg = (configuration-layer/get-package p)
+            when (eq 'pre (oref pkg :step))
+            collect p))
   (spacemacs-buffer/message "+ Configuring packages...")
   (configuration-layer//configure-packages-2
-   (configuration-layer/filter-objects
-    packages (lambda (x)
-               (let ((pkg (configuration-layer/get-package x)))
-                 (null (oref pkg :step)))))))
+   (cl-loop for p in packages
+            for pkg = (configuration-layer/get-package p)
+            when (null (oref pkg :step))
+            collect p)))
 
 (defun configuration-layer//configure-packages-2 (packages)
   "Configure all passed PACKAGES."
@@ -1988,12 +1948,11 @@ LAYER must not be the owner of PKG."
          (disabled (when owner (oref owner :disabled-for)))
          (enabled (when owner (oref owner :enabled-for))))
     (and owner
-         (not (memq nil (mapcar
-                         (lambda (dep-pkg)
-                           (let ((pkg-obj (configuration-layer/get-package dep-pkg)))
-                             (when pkg-obj
-                               (configuration-layer//package-enabled-p pkg-obj layer))))
-                         (oref pkg :requires))))
+         (cl-loop
+          for dep-pkg in (oref pkg :requires)
+          for pkg-obj = (configuration-layer/get-package dep-pkg)
+          always (and pkg-obj
+                      (configuration-layer//package-enabled-p pkg-obj layer)))
          (if (not (eq 'unspecified enabled))
              (memq layer enabled)
            (not (memq layer disabled))))))
@@ -2002,22 +1961,20 @@ LAYER must not be the owner of PKG."
   "Pre-configure PKG object, i.e. call its pre-init functions."
   (let* ((pkg-name (oref pkg :name))
          (owner (car (oref pkg :owners))))
-    (mapc
-     (lambda (layer)
-       (when (configuration-layer/layer-used-p layer)
-         (if (not (configuration-layer//package-enabled-p pkg layer))
-             (spacemacs-buffer/message
-              (format "%S -> ignored pre-init (%S)..." pkg-name layer))
-           (spacemacs-buffer/message
-            (format "%S -> pre-init (%S)..." pkg-name layer))
-           (condition-case-unless-debug err
-               (funcall (intern (format "%S/pre-init-%S" layer pkg-name)))
-             ('error
-              (configuration-layer//error
-               (concat "\nAn error occurred while pre-configuring %S "
-                       "in layer %S (error: %s)\n")
-               pkg-name layer err))))))
-     (oref pkg :pre-layers))))
+    (dolist (layer (oref pkg :pre-layers))
+      (when (configuration-layer/layer-used-p layer)
+        (if (not (configuration-layer//package-enabled-p pkg layer))
+            (spacemacs-buffer/message
+             (format "%S -> ignored pre-init (%S)..." pkg-name layer))
+          (spacemacs-buffer/message
+           (format "%S -> pre-init (%S)..." pkg-name layer))
+          (condition-case-unless-debug err
+              (funcall (intern (format "%S/pre-init-%S" layer pkg-name)))
+            ('error
+             (configuration-layer//error
+              (concat "\nAn error occurred while pre-configuring %S "
+                      "in layer %S (error: %s)\n")
+              pkg-name layer err))))))))
 
 (defun configuration-layer//configure-package (pkg)
   "Configure PKG object, i.e. call its post-init function."
@@ -2032,34 +1989,27 @@ LAYER must not be the owner of PKG."
   "Post-configure PKG object, i.e. call its post-init functions."
   (let* ((pkg-name (oref pkg :name))
          (owner (car (oref pkg :owners))))
-    (mapc
-     (lambda (layer)
-       (when (configuration-layer/layer-used-p layer)
-         (if (not (configuration-layer//package-enabled-p pkg layer))
-             (spacemacs-buffer/message
-              (format "%S -> ignored post-init (%S)..." pkg-name layer))
-           (spacemacs-buffer/message
-            (format "%S -> post-init (%S)..." pkg-name layer))
-           (condition-case-unless-debug err
-               (funcall (intern (format "%S/post-init-%S" layer pkg-name)))
-             ('error
-              (configuration-layer//error
-               (concat "\nAn error occurred while post-configuring %S "
-                       "in layer %S (error: %s)\n")
-               pkg-name layer err))))))
-     (oref pkg :post-layers))))
+    (dolist (layer (oref pkg :post-layers))
+      (when (configuration-layer/layer-used-p layer)
+        (if (not (configuration-layer//package-enabled-p pkg layer))
+            (spacemacs-buffer/message
+             (format "%S -> ignored post-init (%S)..." pkg-name layer))
+          (spacemacs-buffer/message
+           (format "%S -> post-init (%S)..." pkg-name layer))
+          (condition-case-unless-debug err
+              (funcall (intern (format "%S/post-init-%S" layer pkg-name)))
+            ('error
+             (configuration-layer//error
+              (concat "\nAn error occurred while post-configuring %S "
+                      "in layer %S (error: %s)\n")
+              pkg-name layer err))))))))
 
 (defun configuration-layer//cleanup-rollback-directory ()
   "Clean up the rollback directory."
-  (let* ((dirattrs (delq nil
-                         (mapcar (lambda (d)
-                                   (unless (eq t d) d))
-                                 (directory-files-and-attributes
-                                  configuration-layer-rollback-directory
-                                  nil "\\`\\(\\.\\{0,2\\}[^.\n].*\\)\\'" t))))
-         (dirs (sort dirattrs
-                     (lambda (d e)
-                       (time-less-p (nth 6 d) (nth 6 e))))))
+  (let* ((dirattrs (directory-files-and-attributes
+                    configuration-layer-rollback-directory
+                    nil "\\`\\(\\.\\{0,2\\}[^.\n].*\\)\\'" t))
+         (dirs (cl-sort dirattrs #'time-less-p :key #'seventh)))
     (dotimes (c (- (length dirs) dotspacemacs-max-rollback-slots))
       (delete-directory (concat configuration-layer-rollback-directory
                                 "/" (car (pop dirs)))
@@ -2104,12 +2054,11 @@ to update."
                            (format " (skipped %s):\n" skipped-count)
                          ":\n"))
                upgrade-count) t)
-      (mapc (lambda (x)
-              (spacemacs-buffer/append
-               (format (if (memq (intern x) dotspacemacs-frozen-packages)
-                           "%s (won't be updated because package is frozen)\n"
-                         "%s\n") x) t))
-            (sort (mapcar 'symbol-name update-packages) 'string<))
+      (dolist (x (sort (mapcar 'symbol-name update-packages) 'string<))
+        (spacemacs-buffer/append
+         (format (if (memq (intern x) dotspacemacs-frozen-packages)
+                     "%s (won't be updated because package is frozen)\n"
+                   "%s\n") x) t))
       (if (and (not no-confirmation)
                (not (yes-or-no-p
                      (format "Do you want to update %s package(s)? "
@@ -2159,16 +2108,15 @@ to update."
   "Return a list of candidates to select a rollback slot."
   (let ((rolldir configuration-layer-rollback-directory))
     (when (file-exists-p rolldir)
-      (reverse
-       (delq nil (mapcar
-                  (lambda (x)
-                    (when (and (file-directory-p (concat rolldir x))
-                               (not (or (string= "." x) (string= ".." x))))
-                      (let ((p (length (directory-files (file-name-as-directory
-                                                         (concat rolldir x))))))
-                        ;; -3 for . .. and rollback-info
-                        (format "%s (%s packages)" x (- p 3)))))
-                  (directory-files rolldir)))))))
+      (cl-loop for x in (directory-files rolldir)
+               with result = nil
+               when (and (file-directory-p (concat rolldir x))
+                         (not (or (string= "." x) (string= ".." x))))
+               do (let ((p (length (directory-files (file-name-as-directory
+                                                     (concat rolldir x))))))
+                    ;; -3 for . .. and rollback-info
+                    (push (format "%s (%s packages)" x (- p 3)) result))
+               finally return result))))
 
 (defun configuration-layer/rollback (slot)
   "Rollback all the packages in the given SLOT.
@@ -2277,11 +2225,9 @@ depends on it."
               (memq pkg-name configuration-layer--protected-packages))
     (if (ht-contains? dependencies pkg-name)
         (let ((parents (ht-get dependencies pkg-name)))
-          (cl-reduce (lambda (x y) (and x y))
-                     (mapcar (lambda (p) (configuration-layer//is-package-orphan
-                                          p dist-pkgs dependencies))
-                             parents)
-                     :initial-value t))
+          (cl-loop for p in parents
+                   always (configuration-layer//is-package-orphan
+                           p dist-pkgs dependencies)))
       (not (memq pkg-name dist-pkgs)))))
 
 (defun configuration-layer//get-package-directory (pkg-name)
@@ -2457,20 +2403,17 @@ depends on it."
 
 (defun configuration-layer//get-indexed-elpa-package-names ()
   "Return a list of all ELPA packages in indexed packages and dependencies."
-  (let (result)
-    (dolist (pkg-sym (configuration-layer//filter-distant-packages
-                      (ht-keys configuration-layer--indexed-packages) nil))
-      (when (assq pkg-sym package-archive-contents)
-        (let* ((deps (mapcar 'car
-                             (configuration-layer//get-package-deps-from-archive
-                              pkg-sym)))
-               (elpa-deps (configuration-layer/filter-objects
-                           deps (lambda (x)
-                                  (assq x package-archive-contents)))))
-          (dolist (pkg (cons pkg-sym elpa-deps))
-            ;; avoid duplicates
-            (add-to-list 'result pkg)))))
-    result))
+  (let ((result (make-hash-table))
+        (elpa-pkgs (mapcar #'car package-archive-contents)))
+    (dolist (pkg-sym
+             (configuration-layer//filter-distant-packages
+              (ht-keys configuration-layer--indexed-packages) nil)
+             (hash-table-keys result))
+      (when (memq pkg-sym elpa-pkgs)
+        (puthash pkg-sym t result)
+        (dolist (dep (configuration-layer//get-package-deps-from-archive pkg-sym))
+          (when (memq (car dep) elpa-pkgs)
+            (puthash (car dep) t result)))))))
 
 (defun configuration-layer//create-archive-contents-item (pkg-name)
   "Return an item with an ELPA archive-contents compliant format."

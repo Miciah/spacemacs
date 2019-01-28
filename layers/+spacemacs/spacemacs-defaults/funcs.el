@@ -304,15 +304,11 @@ projectile cache and updates recentf list."
 
       ;; Update recentf list.
       (when (fboundp 'recentf-add-file)
-        (seq-map
-         (lambda (fp)
-           (recentf-add-file
-            (concat new-filename (string-remove-prefix filename fp)))
-           (recentf-remove-if-non-kept fp))
-         (seq-filter
-          (lambda (fp)
-            (string-prefix-p filename fp))
-          recentf-list)))
+        (dolist (fp (cl-remove filename recentf-list
+                               :test-not #'string-prefix-p))
+          (recentf-add-file
+           (concat new-filename (string-remove-prefix filename fp)))
+          (recentf-remove-if-non-kept fp)))
 
       ;; Invalidate projectile cache.
       (when (and (configuration-layer/package-used-p 'projectile)
@@ -710,23 +706,17 @@ in a new frame."
 ;; Window Split
 
 (defun spacemacs--window-split-splittable-windows ()
-  (seq-remove
-    (lambda (window)
-      ;; TODO: find a way to identify unsplittable side windows reliably!
-      nil)
-    (spacemacs--window-split-non-ignored-windows)))
+  (cl-remove-if
+   #'ignore ;; TODO: find a way to identify unsplittable side windows reliably!
+   (spacemacs--window-split-non-ignored-windows)))
 
 (defun spacemacs--window-split-non-ignored-windows ()
   "Determines the list of windows to be deleted."
-  (seq-filter
-    (lambda (window)
-      (let* ((name (buffer-name (window-buffer window)))
-              (prefixes-matching
-                (seq-filter
-                  (lambda (prefix) (string-prefix-p prefix name))
-                  spacemacs-window-split-ignore-prefixes)))
-        (not prefixes-matching)))
-    (window-list (selected-frame))))
+  (cl-loop for window being the windows
+           unless (cl-find (buffer-name (window-buffer window))
+                           spacemacs-window-split-ignore-prefixes
+                           :test #'string-prefix-p)
+           collect window))
 
 (defun spacemacs/window-split-default-delete ()
   "Deletes other windows, except a list of excluded ones."
@@ -880,14 +870,13 @@ the `kill-matching-buffers` for grateful killing. The optional 2nd argument
 indicates whether to kill internal buffers too.
 
 Returns the count of killed buffers."
-  (let* ((buffers (remove-if-not
-                   (lambda (buffer)
-                     (let ((name (buffer-name buffer)))
-                       (and name (not (string-equal name ""))
-                            (or internal-too (/= (aref name 0) ?\s))
-                            (string-match regexp name))))
-                   (buffer-list))))
-    (mapc 'kill-buffer buffers)
+  (let* ((buffers (cl-loop for buffer being the buffers
+                           for name = (buffer-name buffer)
+                           when (and name (not (string-equal name ""))
+                                     (or internal-too (/= (aref name 0) ?\s))
+                                     (string-match regexp name))
+                           collect buffer)))
+    (mapc #'kill-buffer buffers)
     (length buffers)))
 
 (defun spacemacs/kill-matching-buffers-rudely (regexp &optional internal-too)

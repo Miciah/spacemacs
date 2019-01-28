@@ -49,10 +49,7 @@
 
 (defun helm-games//game-candidates ()
   "Return the list of game candidates."
-  (setq helm-games-list (sort helm-games-list
-                              (lambda (x y)
-                                (string< (car x) (car y)))))
-  helm-games-list)
+  (setq helm-games-list (cl-sort helm-games-list #'string< :key car)))
 
 (defun helm-games//run-game (candidate)
   "Run the selected game."
