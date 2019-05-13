@@ -121,23 +121,24 @@ Sets properties for WINDOW and updates some variables, if WINDOW is a
 popup window.
 
 This function should be hooked to `purpose-display-buffer-functions'."
-  (let* ((buffer (window-buffer window))
-         (config (popwin:match-config buffer))
-         (settings (cdr (popwin:listify config))))
-    (when config
-      (setq pupo--windows (delete window pupo--windows))
-      (push window pupo--windows)
-      (when (plist-get settings :dedicated)
-        (set-window-dedicated-p window t))
-      (unless (plist-get settings :stick)
-        (push window pupo--auto-windows))
-      (unless (or (minibuffer-window-active-p (selected-window))
-                  (plist-get settings :noselect))
-        ;; popwin selects window unless :noselect is t
-        ;; in contrast, popwin doesn't prevent selection when :noselect is nil
-        (select-window window))
-      ;; make \\[C-g] delete last popup window
-      (global-set-key [remap keyboard-quit] #'pupo/close-window))))
+  (when (window-live-p window)
+    (let* ((buffer (window-buffer window))
+           (config (popwin:match-config buffer))
+           (settings (cdr (popwin:listify config))))
+      (when config
+        (setq pupo--windows (delete window pupo--windows))
+        (push window pupo--windows)
+        (when (plist-get settings :dedicated)
+          (set-window-dedicated-p window t))
+        (unless (plist-get settings :stick)
+          (push window pupo--auto-windows))
+        (unless (or (minibuffer-window-active-p (selected-window))
+                    (plist-get settings :noselect))
+          ;; popwin selects window unless :noselect is t
+          ;; in contrast, popwin doesn't prevent selection when :noselect is nil
+          (select-window window))
+        ;; make \\[C-g] delete last popup window
+        (global-set-key [remap keyboard-quit] #'pupo/close-window)))))
 
 (defun pupo//safe-delete-window (&optional window)
   "Delete WINDOW if possible.

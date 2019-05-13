@@ -118,21 +118,18 @@ Cancels autosave on exiting perspectives mode."
 
 (defun spacemacs//layouts-ts-hint ()
   "Return a one liner string containing all the layout names."
-  (let* ((persp-list (or (persp-names-current-frame-fast-ordered)
-                         (list persp-nil-name)))
-         (formatted-persp-list
-          (concat " "
-                  (mapconcat (lambda (persp)
-                               (spacemacs//layout-format-name
-                                persp (position persp persp-list)))
-                             persp-list " | "))))
-    (concat
-     formatted-persp-list
-     (if (equal 1 spacemacs--ts-full-hint-toggle)
-         spacemacs--layouts-ts-full-hint
-       (concat "  (["
-               (propertize "?" 'face 'hydra-face-red)
-               "] help)")))))
+  (concat
+        (cl-loop for persp in (or (persp-names-current-frame-fast-ordered)
+                                  (list persp-nil-name))
+                 for n from 0
+                 concat " | " into res
+                 concat (spacemacs//layout-format-name persp n) into res
+                 finally return (substring res 2))
+        (if (equal 1 spacemacs--ts-full-hint-toggle)
+            spacemacs--layouts-ts-full-hint
+          (concat "  (["
+                  (propertize "?" 'face 'hydra-face-red)
+                  "] help)"))))
 
 (defun spacemacs//generate-layout-name (pos)
   "Generate name for layout of position POS.

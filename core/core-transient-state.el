@@ -39,12 +39,11 @@ may hold the keys to be removed. The variable may be unbound."
 
 (defun spacemacs//transient-state-adjust-bindings (bindings to-remove to-add)
   (append
-   (cl-remove-if
-    (lambda (bnd)
-      (and (boundp to-remove)
-           (listp (symbol-value to-remove))
-           (member (car bnd) (symbol-value to-remove))))
-    bindings)
+   (cl-loop for bnd in bindings
+            unless (and (boundp to-remove)
+                        (listp (symbol-value to-remove))
+                        (member (car bnd) (symbol-value to-remove)))
+            collect bnd)
    (when (and (boundp to-add)
               (listp (symbol-value to-add)))
      (symbol-value to-add))))

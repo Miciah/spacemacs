@@ -19,8 +19,8 @@
 
 (defun spacemacs//ibuffer-get-major-modes-list ()
   (mapcar
-   (function (lambda (buffer)
-               (buffer-local-value 'major-mode (get-buffer buffer))))
+   (lambda (buffer)
+     (buffer-local-value 'major-mode (get-buffer buffer)))
    (buffer-list (selected-frame))))
 
 (defun spacemacs//ibuffer-create-buffs-group ()

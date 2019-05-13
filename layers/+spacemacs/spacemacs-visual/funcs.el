@@ -23,9 +23,10 @@
 (defun spacemacs/remove-popwin-display-config (str)
   "Removes the popwin display configurations that matches the passed STR"
   (setq popwin:special-display-config
-        (-remove (lambda (x) (if (and (listp x) (stringp (car x)))
-                                 (string-match str (car x))))
-                 popwin:special-display-config)))
+        (cl-loop for x in popwin:special-display-config
+                 unless (and (stringp (car-safe x))
+                             (string-match str (car x)))
+                 collect x)))
 
 
 ;; zoom

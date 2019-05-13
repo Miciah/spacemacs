@@ -117,8 +117,8 @@ the mode will not show in the mode line."
                 nil t nil 'diminish-history-symbols))))
   ;; remove the `mode' entry from spacemacs own list
   (setq spacemacs--diminished-minor-modes
-        (delq nil (mapcar (lambda (x) (unless (eq (car x) mode) x))
-                          spacemacs--diminished-minor-modes)))
+        (cl-delete mode spacemacs--diminished-minor-modes
+                   :test #'eq :key #'car))
   (diminish-undo mode))
 
 (defmacro spacemacs|hide-lighter (mode)

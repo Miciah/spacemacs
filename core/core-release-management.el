@@ -328,9 +328,9 @@ Returns the output of git status --porcelain."
 (defun spacemacs//compute-version-score (version)
   "Returns an integer from the version list.
 Example: (1 42 3) = 1 042 003"
-  (let ((i -1))
-    (cl-reduce '+ (mapcar (lambda (n) (setq i (1+ i)) (* n (expt 10 (* i 3))))
-                       (reverse version)))))
+  (cl-loop for n in (reverse version)
+           for i = 1 then (* i 1000)
+           sum (* n i)))
 
 (defun spacemacs/set-new-version-lighter-mode-line-faces ()
   "Define or set the new version lighter mode-line faces."

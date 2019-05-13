@@ -767,9 +767,9 @@ error recovery."
            dotspacemacs-filepath))
   ;; protect global values of these variables
   (let (dotspacemacs-configuration-layer-path dotspacemacs-configuration-layers
-        dotspacemacs-additional-packages dotspacemacs-excluded-packages
-        dotspacemacs-install-packages
-        (passed-tests 0) (total-tests 0))
+                                              dotspacemacs-additional-packages dotspacemacs-excluded-packages
+                                              dotspacemacs-install-packages
+                                              (passed-tests 0) (total-tests 0))
     (load dotspacemacs-filepath)
     (dotspacemacs/layers)
     (spacemacs//test-list
@@ -779,8 +779,8 @@ error recovery."
      'file-directory-p 'dotspacemacs-configuration-layer-path
      "exists in filesystem" "path")
     (setq dotspacemacs-configuration-layers
-          (mapcar (lambda (l) (if (listp l) (car l) l))
-                  dotspacemacs-configuration-layers))
+          (cl-loop for l in dotspacemacs-configuration-layers
+                   if (listp l) collect (car l) else collect l))
     (spacemacs//test-list
      'configuration-layer/get-layer-path
      'dotspacemacs-configuration-layers  "can be found" "layer")
@@ -901,11 +901,10 @@ error recovery."
           ;; (insert (format "* Running tests on %s (v%s)\n" dotspacemacs-filepath dotspacemacs-version))
           (prog1
               ;; execute all tests no matter what
-              (cl-reduce (lambda (x y)
-                           (and (funcall y) x))
-                         '(dotspacemacs//test-dotspacemacs/layers
-                           dotspacemacs//test-dotspacemacs/init)
-                         :initial-value t)
+              (cl-every #'identity
+                        (mapcar #'funcall
+                                '(dotspacemacs//test-dotspacemacs/layers
+                                  dotspacemacs//test-dotspacemacs/init)))
             (goto-char (point-min))))))))
 
 (provide 'core-dotspacemacs)

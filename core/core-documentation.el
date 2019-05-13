@@ -29,13 +29,12 @@
 (defun spacemacs//generate-layers-from-path (path level)
   "Add all layers found in PATH to the current buffer, at org level LEVEL."
   (let* ((all-subs (directory-files path t nil nil))
-         (layers (-filter (lambda (p)
-                            (eq 'layer (configuration-layer//directory-type p)))
-                          all-subs))
-         (categories (-filter
-                      (lambda (p)
-                        (eq 'category (configuration-layer//directory-type p)))
-                      all-subs)))
+         (layers (cl-remove 'layer all-subs
+                            :test-not #'eq
+                            :key #'configuration-layer//directory-type))
+         (categories (cl-remove 'category all-subs
+                                :test-not #'eq
+                                :key #'configuration-layer//directory-type)))
     (message "%S" layers)
     (dolist (l layers)
       (let ((layer-name (file-name-nondirectory l))

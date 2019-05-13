@@ -32,9 +32,8 @@ Otherwise, revert to the default behavior (i.e. enable `evil-insert-state')."
     (setq spacemacs--evil-iedit-insert-states-default
           (evil-get-property evil-state-properties 'iedit-insert :enable))
     (setq spacemacs--evil-iedit-insert-states-hybrid
-          (mapcar (lambda (item)
-                    (if (eq item 'insert) 'hybrid item))
-                  spacemacs--evil-iedit-insert-states-default)))
+          (cl-substitute 'hybrid 'insert
+                         spacemacs--evil-iedit-insert-states-default)))
   (let ((states (if (eq style 'hybrid)
                     spacemacs--evil-iedit-insert-states-hybrid
                   spacemacs--evil-iedit-insert-states-default)))
